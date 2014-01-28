@@ -13,6 +13,7 @@ using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Shapes;
+using Rectangle = System.Drawing.Rectangle;
 
 namespace K4W2Accuracy.ViewModel
 {
@@ -69,26 +70,70 @@ namespace K4W2Accuracy.ViewModel
                                               // any other module which needs to shutdown will register
                                               // and respond to the KinectStatusMessage sent by ShutdownHelper()
                                               Helper.ShutdownHelper();
+
+                                              if(Observation.Count > 0 && Actual.Count > 0)
+                                              {
+                                                  //Output the observations and actual distances to a file
+                                              }
                                           }));
             }
         }
 
-        private RelayCommand<MouseButtonEventArgs> _depthClickCommand;
+        private RelayCommand<Point> _depthClickCommand;
 
         /// <summary>
         /// Gets the DepthClickCommand.
         /// </summary>
-        public RelayCommand<MouseButtonEventArgs> DepthClickCommand
+        public RelayCommand<Point> DepthClickCommand
         {
             get
             {
                 return _depthClickCommand
-                    ?? (_depthClickCommand = new RelayCommand<MouseButtonEventArgs>(
-                                          (e) =>
+                    ?? (_depthClickCommand = new RelayCommand<Point>(
+                                          (pt) =>
                                           {
-                                              var pt = e.GetPosition(null);
-                                              clicked = new Rect(pt.X - 15, pt.Y - 15, 10, 10);
+                                              DepthSelection = new Rectangle((int)pt.X - 5, (int)pt.Y - 5, 10, 10);
                                               GetDepth = true;
+                                          }));
+            }
+        }
+
+        private RelayCommand<Point> _colorClickCommand;
+
+        /// <summary>
+        /// Gets the ColorClickCommand.
+        /// </summary>
+        public RelayCommand<Point> ColorClickCommand
+        {
+            get
+            {
+                return _colorClickCommand
+                    ?? (_colorClickCommand = new RelayCommand<Point>(
+                                          (pt) =>
+                                          {
+                                              ColorSelection = new Rectangle((int)pt.X - 5, (int)pt.Y - 5, 10, 10);
+                                          }));
+            }
+        }
+
+        List<double> Observation = new List<double>();
+        List<double> Actual = new List<double>();
+
+        private RelayCommand _storeObservation;
+
+        /// <summary>
+        /// Gets the StoreObservation.
+        /// </summary>
+        public RelayCommand StoreObservation
+        {
+            get
+            {
+                return _storeObservation
+                    ?? (_storeObservation = new RelayCommand(
+                                          () =>
+                                          {
+                                              Observation.Add(Double.Parse(ActualDistance));
+                                              Actual.Add(Double.Parse(ActualDistance));
                                           }));
             }
         }
@@ -101,6 +146,11 @@ namespace K4W2Accuracy.ViewModel
 
             if (success)
             {
+                if(ColorSelection != Rectangle.Empty)
+                {
+                    img.DrawRectangle(ColorSelection.X, ColorSelection.Y, ColorSelection.Right, ColorSelection.Bottom, Color.FromRgb(0, 255, 255));
+                }
+
                 ColorImage = img;
             }
 
@@ -140,7 +190,9 @@ namespace K4W2Accuracy.ViewModel
             }
         }
 
-        private Rect clicked = Rect.Empty;
+        private Rectangle DepthSelection = Rectangle.Empty;
+
+        private Rectangle ColorSelection = Rectangle.Empty;
 
         private bool GetDepth = false;
 
@@ -160,14 +212,14 @@ namespace K4W2Accuracy.ViewModel
             {
                 img = BitmapFactory.ConvertToPbgra32Format(img);
 
-                if (clicked != Rect.Empty)
+                if (DepthSelection != Rectangle.Empty)
                 {
                     if (GetDepth)
                     {
                         List<int> depths = new List<int>();
-                        for (int i = (int)clicked.Y; i < (int)clicked.Y + 40; ++i)
+                        for (int i = DepthSelection.Y; i < DepthSelection.Y + 40; ++i)
                         {
-                            for (int j = (int)clicked.X; j < (int)clicked.X + 40; j++)
+                            for (int j = DepthSelection.X; j < DepthSelection.X + 40; j++)
                             {
                                 if (i > 0 && j > 0 && i < DepthFrameDesc.Height && j < DepthFrameDesc.Width)
                                 {
@@ -181,7 +233,7 @@ namespace K4W2Accuracy.ViewModel
 
                         if (depths.Count > 0)
                         {
-                            Distance = Math.Round(depths.Average(), 2).ToString() + " mm";
+                            Distance = Math.Round(depths.Average(), 2).ToString();
                             GetDepth = false;
                         }
                         else
@@ -191,7 +243,12 @@ namespace K4W2Accuracy.ViewModel
                         }
                     }
 
-                    img.DrawRectangle((int)clicked.X, (int)clicked.Y, (int)clicked.BottomRight.X, (int)clicked.BottomRight.Y, Color.FromRgb(0, 0, 255));
+                    img.DrawRectangle(DepthSelection.X, DepthSelection.Y, DepthSelection.Right, DepthSelection.Bottom, Color.FromRgb(0, 0, 255));
+                }
+
+                if (ColorSelection != Rectangle.Empty)
+                {
+                    img.DrawRectangle(ColorSelection.X, ColorSelection.Y, ColorSelection.Right, ColorSelection.Bottom, Color.FromRgb(0, 255, 255));
                 }
 
                 img.DrawRectangle(512 / 2 - 10, 424 / 2 - 10, 512 / 2 + 10, 424 / 2 + 10, Color.FromRgb(0, 255, 0));
@@ -217,7 +274,7 @@ namespace K4W2Accuracy.ViewModel
         {
             get
             {
-                return _distanceString;
+                return _distanceString + " mm";
             }
 
             set
@@ -233,6 +290,36 @@ namespace K4W2Accuracy.ViewModel
             }
         }
 
+        /// <summary>
+        /// The <see cref="ActualDistance" /> property's name.
+        /// </summary>
+        public const string ActualDistancePropertyName = "ActualDistance";
+
+        private string _actualDistance = "";
+
+        /// <summary>
+        /// Sets and gets the ActualDistance property.
+        /// Changes to that property's value raise the PropertyChanged event. 
+        /// </summary>
+        public string ActualDistance
+        {
+            get
+            {
+                return _actualDistance;
+            }
+
+            set
+            {
+                if (_actualDistance == value)
+                {
+                    return;
+                }
+
+                RaisePropertyChanging(ActualDistancePropertyName);
+                _actualDistance = value;
+                RaisePropertyChanged(ActualDistancePropertyName);
+            }
+        }
         /// <summary>
         /// Initializes a new instance of the MainViewModel class.
         /// </summary>

@@ -1,5 +1,6 @@
 ﻿using GistModulesLib;
 using K4W2Accuracy.Model;
+using K4W2Accuracy.ViewModel;
 using System;
 using System.Collections.Generic;
 using System.ComponentModel.Composition;
@@ -26,6 +27,18 @@ namespace K4W2Accuracy
         public MainWindow()
         {
             InitializeComponent();
+        }
+
+        private void DepthImage_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+        {
+            var point = e.GetPosition((Image)sender);
+            ((MainViewModel)this.DataContext).DepthClickCommand.Execute(point);
+        }
+
+        private void ColorImage_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+        {
+            var point = e.GetPosition((Image)sender);
+            ((MainViewModel)this.DataContext).ColorClickCommand.Execute(point);
         }
     }
 }
