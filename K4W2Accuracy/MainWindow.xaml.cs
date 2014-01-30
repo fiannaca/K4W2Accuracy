@@ -32,13 +32,22 @@ namespace K4W2Accuracy
         private void DepthImage_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
         {
             var point = e.GetPosition((Image)sender);
-            ((MainViewModel)this.DataContext).DepthClickCommand.Execute(point);
+            var mpoint = new MousePoint { X = (int)point.X, Y = (int)point.Y };
+            ((MainViewModel)this.DataContext).DepthClickCommand.Execute(mpoint);
         }
 
         private void ColorImage_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
         {
             var point = e.GetPosition((Image)sender);
-            ((MainViewModel)this.DataContext).ColorClickCommand.Execute(point);
+            var mpoint = new MousePoint { X = (int)point.X, Y = (int)point.Y };
+            ((MainViewModel)this.DataContext).ColorClickCommand.Execute(mpoint);
         }
+    }
+
+    public class MousePoint
+    {
+        public int X { get; set; }
+
+        public int Y { get; set; }
     }
 }

@@ -2,13 +2,73 @@
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:i="http://schemas.microsoft.com/expression/2010/interactivity"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" 
+        mc:Ignorable="d"
         xmlns:Custom="http://www.galasoft.ch/mvvmlight"
-        Title="MainWindow" SizeToContent="WidthAndHeight">
+        Title="Kinect 4 Windows v2 - Accuracy Analysis" SizeToContent="WidthAndHeight">
+    
+    <Window.Resources>
+        <ControlTemplate x:Key="StatusMessage"
+                         TargetType="{x:Type Label}">
+            <StackPanel x:Name="StatusMessage">
+                <Label Name="Holder"
+                       Content="{TemplateBinding Content}"
+                       Visibility="Collapsed"/>
+            
+                <Border CornerRadius="4"
+                        BorderThickness="2"
+                        Background="{Binding MessageBackground}"
+                        VerticalAlignment="Center"
+                        Margin="0,5"
+                        BorderBrush="{Binding MessageBorderColor}">
+                    <Label VerticalAlignment="Center"
+                           Padding="4,2"
+                           FontSize="18"
+                           Name="Message"
+                           Visibility="Visible"
+                           Content="{Binding ElementName=Holder, Path=Content, NotifyOnTargetUpdated=True}"/>
+                </Border>
+            </StackPanel>
+            
+            <ControlTemplate.Triggers>
+                <Trigger SourceName="Holder"
+                         Property="Content"
+                         Value="">
+                    <Setter TargetName="StatusMessage"
+                            Property="Visibility"
+                            Value="Hidden"/>
+                </Trigger>
+                
+                <EventTrigger SourceName="Message"
+                              RoutedEvent="Binding.TargetUpdated">
+                    <BeginStoryboard>
+                        <Storyboard TargetName="StatusMessage">
+                            <DoubleAnimation Storyboard.TargetProperty="Opacity"
+                                             Duration="0:0:0.5"
+                                             From="0.0"
+                                             To="1.0"/>
+                            <DoubleAnimation Storyboard.TargetProperty="Opacity"
+                                             Duration="0:0:2"
+                                             From="1.0"
+                                             To="0.0"
+                                             BeginTime="0:0:1"/>
+                        </Storyboard>
+                    </BeginStoryboard>
+                </EventTrigger>
+            </ControlTemplate.Triggers>
+        </ControlTemplate>
+    </Window.Resources>
     
     <Window.DataContext>
         <Binding Path="MainViewModel" Source="{StaticResource Locator}"/>
     </Window.DataContext>
 
+    <Window.InputBindings>
+        <KeyBinding Command="{Binding StoreObservation, Mode=OneWay}"
+                    Key="Enter"/>
+    </Window.InputBindings>
+    
     <!-- These triggers are responsible for calling up commands in the MainViewModel -->
     <i:Interaction.Triggers>
         <i:EventTrigger EventName="Loaded">
@@ -35,13 +95,7 @@
                 VerticalAlignment="Top"
                 Height="424" Width="512"
                 Margin="10,10,10,10"  
-                Grid.Row="0" Grid.Column="0" MouseLeftButtonDown="DepthImage_MouseLeftButtonDown">            
-            <i:Interaction.Triggers>
-                <i:EventTrigger EventName="MouseDown">
-                    <Custom:EventToCommand Command="{Binding DepthClickCommand, Mode=OneWay}" PassEventArgsToCommand="True"/>
-                </i:EventTrigger>
-            </i:Interaction.Triggers>            
-        </Image>
+                Grid.Row="0" Grid.Column="0" MouseLeftButtonDown="DepthImage_MouseLeftButtonDown"/>
 
         <Image  x:Name="ColorImage"
                 Source="{Binding ColorImage}" 
@@ -49,28 +103,53 @@
                 VerticalAlignment="Top"
                 Height="288" Width="512"
                 Margin="0,68,10,68"  
-                Grid.Row="0" Grid.Column="1" MouseLeftButtonDown="ColorImage_MouseLeftButtonDown">
-            <i:Interaction.Triggers>
-                <i:EventTrigger EventName="MouseDown">
-                    <Custom:EventToCommand Command="{Binding ColorClickCommand, Mode=OneWay}" PassEventArgsToCommand="True"/>
-                </i:EventTrigger>
-            </i:Interaction.Triggers>
-        </Image>
+                Grid.Row="0" Grid.Column="1"/>
         
-        <Label x:Name="DistLabel" Margin="5,0,0,0" Grid.Row="1" Grid.Column="0" Content="Avg Distance: " FontSize="18" HorizontalAlignment="Left"/>
-        <Label Grid.Row="1" Grid.Column="0" Content="{Binding Distance}" FontSize="18" HorizontalAlignment="Right" Margin="0,0,5,0"/>
-
-        <StackPanel Orientation="Horizontal" Grid.Row="1" Grid.Column="1" HorizontalAlignment="Left">
-            <Label x:Name="ActualDistLabel" Margin="5,0,0,0" Content="Actual Distance: " FontSize="18"/>
-            <TextBox Text="{Binding ActualDistance}" HorizontalAlignment="Right" Width="150" Margin="0,5"/>
+        <StackPanel Orientation="Horizontal" 
+                    HorizontalAlignment="Right" 
+                    Grid.Row="1" Grid.Column="0" >
+            <Label x:Name="DistLabel" 
+                   Margin="5,0,0,0" 
+                   Grid.Row="1" Grid.Column="0" 
+                   Content="Avg Distance: " 
+                   FontSize="18" 
+                   HorizontalAlignment="Left" VerticalAlignment="Center"/>
+            <Label Grid.Row="1" Grid.Column="0" 
+                   Content="{Binding Distance}" 
+                   FontSize="18" 
+                   HorizontalContentAlignment="Right"
+                   Margin="0,0,5,0"
+                   Width="150" VerticalAlignment="Center"/>
         </StackPanel>
-        <Button Content="Store Observation" Grid.Row="1" Grid.Column="1" HorizontalAlignment="Right" Width="150" Margin="0,5,10,5">
-            <i:Interaction.Triggers>
-                <i:EventTrigger EventName="Click">
-                    <Custom:EventToCommand Command="{Binding StoreObservation, Mode=OneWay}" />
-                </i:EventTrigger>
-            </i:Interaction.Triggers>
-        </Button>
+        
+        <StackPanel Orientation="Horizontal" 
+                    Grid.Row="1" Grid.Column="1" 
+                    HorizontalAlignment="Left">
+            <Label x:Name="ActualDistLabel" 
+                   Margin="5,0,0,0" 
+                   Content="Actual Distance: " 
+                   HorizontalAlignment="Left" 
+                   FontSize="18" VerticalAlignment="Center"/>
+            <TextBox Text="{Binding ActualDistance, UpdateSourceTrigger=PropertyChanged}" 
+                     Width="150" Margin="0,5"
+                     VerticalContentAlignment="Center"
+                     FontSize="18"/>
+            <Button Content="Store Observation" Width="150" Margin="10,5,10,5">
+                <i:Interaction.Triggers>
+                    <i:EventTrigger EventName="Click">
+                        <Custom:EventToCommand Command="{Binding StoreObservation, Mode=OneWay}" />
+                    </i:EventTrigger>
+                </i:Interaction.Triggers>
+            </Button>
+        </StackPanel>
+        
+        <Label Template="{StaticResource StatusMessage}"
+               Name="StatusMessageLabel"
+               Content="{Binding StatusMessage}"
+               Grid.Column="1" Grid.Row="0"
+               Margin="0,366,0,0"
+               VerticalAlignment="Top"
+               HorizontalAlignment="Center"/>
     </Grid>
     
 </Window>

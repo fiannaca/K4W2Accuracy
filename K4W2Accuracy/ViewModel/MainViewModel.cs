@@ -14,9 +14,16 @@ using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Shapes;
 using Rectangle = System.Drawing.Rectangle;
+using System.IO;
 
 namespace K4W2Accuracy.ViewModel
 {
+    public struct Observation
+    {
+        public double Observed;
+        public double Actual;
+    }
+
     /// <summary>
     /// This class contains properties that the main View can data bind to.
     /// <para>
@@ -71,53 +78,74 @@ namespace K4W2Accuracy.ViewModel
                                               // and respond to the KinectStatusMessage sent by ShutdownHelper()
                                               Helper.ShutdownHelper();
 
-                                              if(Observation.Count > 0 && Actual.Count > 0)
+                                              if(Observations.Count > 0)
                                               {
-                                                  //Output the observations and actual distances to a file
+                                                  using(FileStream file = new FileStream("Observations.csv", FileMode.OpenOrCreate))
+                                                  {
+                                                      StreamWriter writer = new StreamWriter(file);
+
+                                                      foreach(var ob in Observations)
+                                                      {
+                                                          writer.WriteLine(ob.Observed + "," + ob.Actual + ",");
+                                                      }
+
+                                                      writer.Close();
+                                                  }
                                               }
                                           }));
             }
         }
 
-        private RelayCommand<Point> _depthClickCommand;
+        private RelayCommand<MousePoint> _depthClickCommand;
 
         /// <summary>
         /// Gets the DepthClickCommand.
         /// </summary>
-        public RelayCommand<Point> DepthClickCommand
+        public RelayCommand<MousePoint> DepthClickCommand
         {
             get
             {
                 return _depthClickCommand
-                    ?? (_depthClickCommand = new RelayCommand<Point>(
+                    ?? (_depthClickCommand = new RelayCommand<MousePoint>(
                                           (pt) =>
                                           {
-                                              DepthSelection = new Rectangle((int)pt.X - 5, (int)pt.Y - 5, 10, 10);
+                                              DepthSelection = new Rectangle(pt.X - 5, pt.Y - 5, 10, 10);
                                               GetDepth = true;
+
+                                              //Temp solution to color2depth mapping problem
+                                              DepthSpacePoint dpt = new DepthSpacePoint { X = pt.X, Y = pt.Y };
+                                              var cpt = Helper.PointMapper.MapDepthPointToColorSpace(
+                                                                    dpt, 
+                                                                    DepthFrameData[pt.Y * DepthFrameDesc.Width + pt.X]
+                                                                );
+
+                                              ColorSelection = new Rectangle((int)cpt.X - 15, (int)cpt.Y - 15, 30, 30);
                                           }));
             }
         }
 
-        private RelayCommand<Point> _colorClickCommand;
+        private RelayCommand<MousePoint> _colorClickCommand;
 
         /// <summary>
         /// Gets the ColorClickCommand.
         /// </summary>
-        public RelayCommand<Point> ColorClickCommand
+        public RelayCommand<MousePoint> ColorClickCommand
         {
             get
             {
                 return _colorClickCommand
-                    ?? (_colorClickCommand = new RelayCommand<Point>(
-                                          (pt) =>
+                    ?? (_colorClickCommand = new RelayCommand<MousePoint>(
+                                          (p) =>
                                           {
-                                              ColorSelection = new Rectangle((int)pt.X - 5, (int)pt.Y - 5, 10, 10);
+                                              var pt = new MousePoint { X = (int)(p.X * 3.75), Y = (int)(p.Y * 3.75) };
+                                              ColorSelection = new Rectangle(pt.X - 15, pt.Y - 15, 30, 30);
                                           }));
             }
         }
 
-        List<double> Observation = new List<double>();
-        List<double> Actual = new List<double>();
+        private const string EmptyTextError = "Enter the actual distance to collect an observation!";
+
+        List<Observation> Observations = new List<Observation>();
 
         private RelayCommand _storeObservation;
 
@@ -132,9 +160,30 @@ namespace K4W2Accuracy.ViewModel
                     ?? (_storeObservation = new RelayCommand(
                                           () =>
                                           {
-                                              Observation.Add(Double.Parse(ActualDistance));
-                                              Actual.Add(Double.Parse(ActualDistance));
-                                          }));
+                                              if (ActualDistance != "")
+                                              {
+                                                  Observations.Add(new Observation
+                                                  {
+                                                      Observed = Double.Parse(_distanceString),
+                                                      Actual = Double.Parse(ActualDistance)
+                                                  });
+
+                                                  ActualDistance = "";
+
+                                                  if(Observations.Count > 1)
+                                                  {
+                                                      Message(Observations.Count.ToString() + " observations collected...");
+                                                  }
+                                                  else
+                                                  {
+                                                      Message(Observations.Count.ToString() + " observation collected...");
+                                                  }
+                                              }
+                                              else
+                                              {
+                                                  Message(EmptyTextError, true);
+                                              }
+                                            }));
             }
         }
 
@@ -142,13 +191,26 @@ namespace K4W2Accuracy.ViewModel
         {
             WriteableBitmap img;
 
-            bool success = KinectDisplayHelper.ProcessColorFrame(out img, e.FrameReference);
-
-            if (success)
+            if (KinectDisplayHelper.ProcessColorFrame(out img, e.FrameReference))
             {
                 if(ColorSelection != Rectangle.Empty)
                 {
-                    img.DrawRectangle(ColorSelection.X, ColorSelection.Y, ColorSelection.Right, ColorSelection.Bottom, Color.FromRgb(0, 255, 255));
+                    img = BitmapFactory.ConvertToPbgra32Format(img);
+
+                    var tmp = new Rectangle(ColorSelection.Location, ColorSelection.Size);
+                    
+                    for (int i = 0; i < 3; ++i)
+                    {
+                        img.DrawRectangle(
+                            tmp.X, 
+                            tmp.Y, 
+                            tmp.Right, 
+                            tmp.Bottom, 
+                            Color.FromRgb(0, 255, 255)
+                        );
+
+                        tmp.Inflate(1, 1);
+                    }
                 }
 
                 ColorImage = img;
@@ -194,6 +256,8 @@ namespace K4W2Accuracy.ViewModel
 
         private Rectangle ColorSelection = Rectangle.Empty;
 
+        private Rectangle ColorToDepthSelection = Rectangle.Empty;
+
         private bool GetDepth = false;
 
         private ushort[] DepthFrameData { get; set; }
@@ -233,23 +297,38 @@ namespace K4W2Accuracy.ViewModel
 
                         if (depths.Count > 0)
                         {
-                            Distance = Math.Round(depths.Average(), 2).ToString();
-                            GetDepth = false;
+                            Distance = Math.Round(depths.Average(),0).ToString();
+                            //GetDepth = false;
                         }
                         else
                         {
-                            Distance = "0.0 mm";
-                            GetDepth = false;
+                            Distance = "0.0";
+                            //GetDepth = false;
                         }
                     }
 
                     img.DrawRectangle(DepthSelection.X, DepthSelection.Y, DepthSelection.Right, DepthSelection.Bottom, Color.FromRgb(0, 0, 255));
                 }
 
-                if (ColorSelection != Rectangle.Empty)
-                {
-                    img.DrawRectangle(ColorSelection.X, ColorSelection.Y, ColorSelection.Right, ColorSelection.Bottom, Color.FromRgb(0, 255, 255));
-                }
+                //if (ColorSelection != Rectangle.Empty)
+                //{
+                //    if (ColorToDepthSelection != Rectangle.Empty)
+                //    {
+                //        img.DrawRectangle(
+                //            ColorToDepthSelection.X,
+                //            ColorToDepthSelection.Y,
+                //            ColorToDepthSelection.Right,
+                //            ColorToDepthSelection.Bottom,
+                //            Color.FromRgb(0, 255, 255)
+                //        );
+                //    }
+                //    else
+                //    {
+                //        DepthSpacePoint[] dpoints = new DepthSpacePoint[ColorFrameDesc.LengthInPixels];
+                //        Helper.PointMapper.MapColorFrameToDepthSpace(DepthFrameData, dpoints);
+
+                //    }
+                //}
 
                 img.DrawRectangle(512 / 2 - 10, 424 / 2 - 10, 512 / 2 + 10, 424 / 2 + 10, Color.FromRgb(0, 255, 0));
                     
@@ -264,7 +343,7 @@ namespace K4W2Accuracy.ViewModel
         /// </summary>
         public const string DistancePropertyName = "Distance";
 
-        private string _distanceString = "0.0 mm";
+        private string _distanceString = "0.0";
 
         /// <summary>
         /// Sets and gets the Distance property.
@@ -320,12 +399,134 @@ namespace K4W2Accuracy.ViewModel
                 RaisePropertyChanged(ActualDistancePropertyName);
             }
         }
+
+        /// <summary>
+        /// The <see cref="StatusMessage" /> property's name.
+        /// </summary>
+        public const string StatusMessagePropertyName = "StatusMessage";
+
+        private string _status = "";
+
+        /// <summary>
+        /// Sets and gets the StatusMessage property.
+        /// Changes to that property's value raise the PropertyChanged event. 
+        /// </summary>
+        public string StatusMessage
+        {
+            get
+            {
+                return _status;
+            }
+
+            set
+            {
+                if (_status == value)
+                {
+                    return;
+                }
+
+                RaisePropertyChanging(StatusMessagePropertyName);
+                _status = value;
+                RaisePropertyChanged(StatusMessagePropertyName);
+            }
+        }
+
+        private readonly SolidColorBrush NormalBackground = new SolidColorBrush(Color.FromRgb(166, 247, 142));
+
+        private readonly SolidColorBrush ErrorBackground = new SolidColorBrush(Color.FromRgb(255, 153, 153));
+
+        /// <summary>
+        /// The <see cref="MessageBackground" /> property's name.
+        /// </summary>
+        public const string MessageBackgroundPropertyName = "MessageBackground";
+
+        private SolidColorBrush _background = null;
+
+        /// <summary>
+        /// Sets and gets the MessageBackground property.
+        /// Changes to that property's value raise the PropertyChanged event. 
+        /// </summary>
+        public SolidColorBrush MessageBackground
+        {
+            get
+            {
+                return _background;
+            }
+
+            set
+            {
+                if (_background == value)
+                {
+                    return;
+                }
+
+                RaisePropertyChanging(MessageBackgroundPropertyName);
+                _background = value;
+                RaisePropertyChanged(MessageBackgroundPropertyName);
+            }
+        }
+
+        private readonly SolidColorBrush NormalBorder = new SolidColorBrush(Color.FromRgb(37, 128, 11));
+
+        private readonly SolidColorBrush ErrorBorder = new SolidColorBrush(Color.FromRgb(178, 0, 0));
+
+        /// <summary>
+        /// The <see cref="MessageBorderColor" /> property's name.
+        /// </summary>
+        public const string MessageBorderColorPropertyName = "MessageBorderColor";
+
+        private SolidColorBrush _border = null;
+
+        /// <summary>
+        /// Sets and gets the MessageBorderColor property.
+        /// Changes to that property's value raise the PropertyChanged event. 
+        /// </summary>
+        public SolidColorBrush MessageBorderColor
+        {
+            get
+            {
+                return _border;
+            }
+
+            set
+            {
+                if (_border == value)
+                {
+                    return;
+                }
+
+                RaisePropertyChanging(MessageBorderColorPropertyName);
+                _border = value;
+                RaisePropertyChanged(MessageBorderColorPropertyName);
+            }
+        }
+
+        private void Message(string message, bool isError = false)
+        {
+            if(isError)
+            {
+                MessageBackground = ErrorBackground;
+                MessageBorderColor = ErrorBorder;
+            }
+            else
+            {
+                MessageBackground = NormalBackground;
+                MessageBorderColor = NormalBorder;
+            }
+
+            if (StatusMessage == message)
+                StatusMessage = "";
+
+            StatusMessage = message;
+        }
+
         /// <summary>
         /// Initializes a new instance of the MainViewModel class.
         /// </summary>
         public MainViewModel()
         {
-            
+            _background = NormalBackground;
+            _border = NormalBorder;
         }
     }
 }
